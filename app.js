@@ -1,4 +1,4 @@
-const CONFIG={APPS_SCRIPT_URL:"https://script.google.com/macros/s/AKfycby3FiFsvekZIytOkSchiB4iDDNCsUJSnIgTUek-uuBr3rev_ZwZlqurVp8PnkuYqDD7Zg/exec"};
+const CONFIG={APPS_SCRIPT_URL:"https://script.google.com/macros/s/AKfycbyGKaRmd_vhNbFqsUQk1f_PNu6hI1EezX5ZHot2xG6oE5r78IgCU2j6ynRoFjBB5tixkQ/exec"};
 const data={customers:[],payments:[],packages:[]};
 const money=n=>new Intl.NumberFormat("id-ID",{style:"currency",currency:"IDR",maximumFractionDigits:0}).format(Number(n)||0);
 const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
