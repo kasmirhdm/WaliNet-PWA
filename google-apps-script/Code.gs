@@ -18,8 +18,8 @@ function doGet(e){
     const p=e&&e.parameter?e.parameter:{};
     const action=String(p.action||'').trim().toLowerCase();
     const prefix=String(p.prefix||p.callback||'').trim();
-    if(!action)return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.0',time:new Date().toISOString()},prefix);
-    if(action==='status')return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.0',time:new Date().toISOString()},prefix);
+    if(!action)return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.1',time:new Date().toISOString()},prefix);
+    if(action==='status')return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.1',time:new Date().toISOString()},prefix);
     if(action==='login')return response(loginUser(p.username,p.password),prefix);
     if(action==='dashboard')return response(getDashboard(),prefix);
     if(action==='customers'||action==='pelanggan')return response(getPelanggan(),prefix);
@@ -28,6 +28,7 @@ function doGet(e){
     if(action==='users'||action==='pengguna')return response(getPengguna(),prefix);
     if(action==='settings'||action==='pengaturan')return response(getPengaturan(),prefix);
     if(action==='addcustomer'||action==='tambahpelanggan')return response(addPelanggan(p),prefix);
+    if(action==='adduser'||action==='tambahuser')return response(addPengguna(p),prefix);
     if(action==='bill'){
       const key=String(p.key||'').trim();
       if(!key)return response({success:false,message:'ID pelanggan atau nomor HP belum diisi.'},prefix);
@@ -49,6 +50,7 @@ function doPost(e){
     if(action==='login')return response(loginUser(p.username,p.password),'');
     if(action==='status')return response({success:true,message:'WaliNet API aktif.',time:new Date().toISOString()},'');
     if(action==='addcustomer'||action==='tambahpelanggan')return response(addPelanggan(p),'');
+    if(action==='adduser'||action==='tambahuser')return response(addPengguna(p),'');
     return response({success:false,message:'POST action tidak dikenali.'},'');
   }catch(error){return response({success:false,message:'Terjadi error: '+error.message},'');}
 }
@@ -168,6 +170,46 @@ function addPelanggan(p){
   headers.forEach((h,i)=>{if(Object.prototype.hasOwnProperty.call(values,h))row[i]=values[h]});
   sheet.appendRow(row);
   return {success:true,message:'Pelanggan berhasil ditambahkan.',id:id};
+}
+
+function addPengguna(p){
+  const auth=requireAdminToken(p.token);
+  if(!auth.success)return auth;
+  const name=String(p.name||'').trim();
+  const username=String(p.username||'').trim();
+  const password=String(p.password||'');
+  const role=String(p.role||'operator').trim().toLowerCase()==='admin'?'admin':'operator';
+  const permissions=String(p.permissions||'dashboard,pelanggan,pembayaran,laporan').trim();
+  const status=String(p.status||'Aktif').trim()||'Aktif';
+  if(!name)return {success:false,message:'Nama pengguna wajib diisi.'};
+  if(!username)return {success:false,message:'Username wajib diisi.'};
+  if(!/^[A-Za-z0-9._-]{3,40}$/.test(username))return {success:false,message:'Username hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung (3-40 karakter).'};
+  if(password.length<6)return {success:false,message:'Password minimal 6 karakter.'};
+  const sheet=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_PENGGUNA);
+  if(!sheet)return {success:false,message:'Sheet Pengguna tidak ditemukan.'};
+  const existing=getSheetData(CONFIG.SHEET_PENGGUNA);
+  if(existing.some(r=>String(r['Username']||'').trim().toLowerCase()===username.toLowerCase()))return {success:false,message:'Username tersebut sudah digunakan.'};
+  const id=generateUserId(existing);
+  const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getDisplayValues()[0];
+  const row=Array(headers.length).fill('');
+  const values={
+    'ID User':id,
+    'Nama':name,
+    'Username':username,
+    'Password Hash':sha256(password),
+    'Role':role,
+    'Hak Akses':permissions,
+    'Status':status
+  };
+  headers.forEach((h,i)=>{if(Object.prototype.hasOwnProperty.call(values,h))row[i]=values[h]});
+  sheet.appendRow(row);
+  return {success:true,message:'User berhasil ditambahkan.',user:{id:id,name:name,username:username,role:role,status:status}};
+}
+
+function generateUserId(existing){
+  let max=0;
+  existing.forEach(r=>{const m=String(r['ID User']||'').match(/(\d+)$/);if(m)max=Math.max(max,Number(m[1])||0)});
+  return 'USR'+String(max+1).padStart(3,'0');
 }
 
 function generateCustomerId(existing){
