@@ -1,10 +1,10 @@
 /*************************************************
  * WALINET - BACKEND GOOGLE APPS SCRIPT
- * Backend untuk WaliNet PWA.
+ * GitHub source: WaliNet-PWA
  *************************************************/
 
 const CONFIG={
-  SPREADSHEET_NAME:'WaliNet',
+  SPREADSHEET_ID:'',
   SHEET_PENGGUNA:'Pengguna',
   SHEET_PELANGGAN:'Pelanggan',
   SHEET_PEMBAYARAN:'Pembayaran',
@@ -13,13 +13,21 @@ const CONFIG={
   SESSION_SECONDS:21600
 };
 
+function getSpreadsheet_(){
+  const id=String(CONFIG.SPREADSHEET_ID||PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID')||'').trim();
+  if(id)return SpreadsheetApp.openById(id);
+  const active=SpreadsheetApp.getActiveSpreadsheet();
+  if(active)return active;
+  throw new Error('Spreadsheet belum ditentukan. Jalankan setSpreadsheetId() atau isi CONFIG.SPREADSHEET_ID.');
+}
+
 function doGet(e){
   try{
     const p=e&&e.parameter?e.parameter:{};
     const action=String(p.action||'').trim().toLowerCase();
     const prefix=String(p.prefix||p.callback||'').trim();
-    if(!action)return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.1',time:new Date().toISOString()},prefix);
-    if(action==='status')return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'4.1',time:new Date().toISOString()},prefix);
+    if(!action)return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'5.0',time:new Date().toISOString()},prefix);
+    if(action==='status')return response({success:true,app:'WaliNet',message:'WaliNet API aktif.',version:'5.0',time:new Date().toISOString()},prefix);
     if(action==='login')return response(loginUser(p.username,p.password),prefix);
     if(action==='dashboard')return response(getDashboard(),prefix);
     if(action==='customers'||action==='pelanggan')return response(getPelanggan(),prefix);
@@ -29,11 +37,12 @@ function doGet(e){
     if(action==='settings'||action==='pengaturan')return response(getPengaturan(),prefix);
     if(action==='addcustomer'||action==='tambahpelanggan')return response(addPelanggan(p),prefix);
     if(action==='adduser'||action==='tambahuser')return response(addPengguna(p),prefix);
+    if(action==='addpackage'||action==='tambahpaket')return response(addPaket(p),prefix);
     if(action==='bill'){
       const key=String(p.key||'').trim();
       if(!key)return response({success:false,message:'ID pelanggan atau nomor HP belum diisi.'},prefix);
       const pelanggan=getPelanggan().data||[];
-      const customer=pelanggan.find(r=>String(r['ID Pelanggan']||'').trim()===key||String(r['No HP']||'').trim()===key);
+      const customer=pelanggan.find(r=>String(r['ID Pelanggan']||'').trim()===key||String(r['No HP']||r['Nomor HP']||'').trim()===key);
       if(!customer)return response({success:false,message:'Pelanggan tidak ditemukan.'},prefix);
       const id=String(customer['ID Pelanggan']||'').trim();
       const payments=getSheetData(CONFIG.SHEET_PEMBAYARAN).filter(r=>String(r['ID Pelanggan']||'').trim()===id);
@@ -48,9 +57,10 @@ function doPost(e){
     const p=e&&e.parameter?e.parameter:{};
     const action=String(p.action||'').trim().toLowerCase();
     if(action==='login')return response(loginUser(p.username,p.password),'');
-    if(action==='status')return response({success:true,message:'WaliNet API aktif.',time:new Date().toISOString()},'');
+    if(action==='status')return response({success:true,message:'WaliNet API aktif.',version:'5.0',time:new Date().toISOString()},'');
     if(action==='addcustomer'||action==='tambahpelanggan')return response(addPelanggan(p),'');
     if(action==='adduser'||action==='tambahuser')return response(addPengguna(p),'');
+    if(action==='addpackage'||action==='tambahpaket')return response(addPaket(p),'');
     return response({success:false,message:'POST action tidak dikenali.'},'');
   }catch(error){return response({success:false,message:'Terjadi error: '+error.message},'');}
 }
@@ -64,13 +74,7 @@ function loginUser(username,password){
   if(!user)return {success:false,message:'Username atau password salah.'};
   const storedHash=String(user['Password Hash']||'').trim();
   if(!storedHash||storedHash!==sha256(password))return {success:false,message:'Username atau password salah.'};
-  const userData={
-    id:user['ID User']||'',
-    name:user['Nama']||'',
-    username:user['Username']||'',
-    role:user['Role']||'',
-    permissions:String(user['Hak Akses']||'').split(',').map(x=>x.trim()).filter(Boolean)
-  };
+  const userData={id:user['ID User']||'',name:user['Nama']||'',username:user['Username']||'',role:user['Role']||'',permissions:String(user['Hak Akses']||'').split(',').map(x=>x.trim()).filter(Boolean)};
   const token=Utilities.getUuid();
   CacheService.getScriptCache().put('walinet_session_'+token,JSON.stringify(userData),CONFIG.SESSION_SECONDS);
   userData.token=token;
@@ -110,16 +114,7 @@ function getPelanggan(){
   const data=raw.map(r=>{
     const packageId=String(r['ID Paket']||r['Paket']||'').trim();
     const pkg=packageMap[packageId]||{};
-    return Object.assign({},r,{
-      'ID Pelanggan':r['ID Pelanggan']||r['ID']||'',
-      'No HP':r['No HP']||r['Nomor HP']||'',
-      'Nomor HP':r['Nomor HP']||r['No HP']||'',
-      'ID Paket':packageId,
-      'Nama Paket':r['Nama Paket']||pkg['Nama Paket']||packageId,
-      'Harga':r['Harga']||pkg['Harga']||0,
-      'Jatuh Tempo':r['Jatuh Tempo']||r['Tanggal Jatuh Tempo']||'',
-      'Status':r['Status']||'Aktif'
-    });
+    return Object.assign({},r,{'ID Pelanggan':r['ID Pelanggan']||r['ID']||'','No HP':r['No HP']||r['Nomor HP']||'','Nomor HP':r['Nomor HP']||r['No HP']||'','ID Paket':packageId,'Nama Paket':r['Nama Paket']||pkg['Nama Paket']||packageId,'Harga':r['Harga']||pkg['Harga']||0,'Jatuh Tempo':r['Jatuh Tempo']||r['Tanggal Jatuh Tempo']||'','Status':r['Status']||'Aktif'});
   });
   return {success:true,data:data,total:data.length};
 }
@@ -129,21 +124,40 @@ function getPaket(){const data=getSheetData(CONFIG.SHEET_PAKET);return {success:
 function getPengguna(){const data=getSheetData(CONFIG.SHEET_PENGGUNA);return {success:true,data:data,total:data.length};}
 function getPengaturan(){const data=getSheetData(CONFIG.SHEET_PENGATURAN);return {success:true,data:data,total:data.length};}
 
+function addPaket(p){
+  const auth=requireAdminToken(p.token);
+  if(!auth.success)return auth;
+  const id=String(p.id||'').trim();
+  const name=String(p.name||'').trim();
+  const speed=String(p.speed||'').trim();
+  const price=Number(String(p.price||0).replace(/[^\d.-]/g,''));
+  const duration=String(p.duration||'30 hari').trim();
+  const status=String(p.status||'Aktif').trim()||'Aktif';
+  if(!id)return {success:false,message:'ID Paket wajib diisi.'};
+  if(!name)return {success:false,message:'Nama Paket wajib diisi.'};
+  if(!speed)return {success:false,message:'Kecepatan wajib diisi.'};
+  if(isNaN(price)||price<0)return {success:false,message:'Harga Paket tidak valid.'};
+  const sheet=getSpreadsheet_().getSheetByName(CONFIG.SHEET_PAKET);
+  if(!sheet)return {success:false,message:'Sheet Paket tidak ditemukan.'};
+  const existing=getSheetData(CONFIG.SHEET_PAKET);
+  if(existing.some(r=>String(r['ID Paket']||r['Paket']||'').trim().toLowerCase()===id.toLowerCase()))return {success:false,message:'ID Paket sudah digunakan.'};
+  if(existing.some(r=>String(r['Nama Paket']||'').trim().toLowerCase()===name.toLowerCase()))return {success:false,message:'Nama Paket sudah digunakan.'};
+  const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getDisplayValues()[0];
+  const row=Array(headers.length).fill('');
+  const values={'ID Paket':id,'Nama Paket':name,'Kecepatan':speed,'Harga':price,'Durasi':duration,'Status':status};
+  headers.forEach((h,i)=>{if(Object.prototype.hasOwnProperty.call(values,h))row[i]=values[h]});
+  sheet.appendRow(row);
+  return {success:true,message:'Paket WiFi berhasil ditambahkan.',id:id};
+}
+
 function addPelanggan(p){
   const auth=requireAdminToken(p.token);
   if(!auth.success)return auth;
-  const name=String(p.name||'').trim();
-  const phone=String(p.phone||'').trim();
-  const address=String(p.address||'').trim();
-  const packageId=String(p.packageId||'').trim();
-  const mikrotik=String(p.mikrotik||'').trim();
-  const type=String(p.type||'PPPoE').trim();
-  const due=String(p.due||'').trim();
-  const status=String(p.status||'Aktif').trim()||'Aktif';
+  const name=String(p.name||'').trim(),phone=String(p.phone||'').trim(),address=String(p.address||'').trim(),packageId=String(p.packageId||'').trim(),mikrotik=String(p.mikrotik||'').trim(),type=String(p.type||'PPPoE').trim(),due=String(p.due||'').trim(),status=String(p.status||'Aktif').trim()||'Aktif';
   if(!name)return {success:false,message:'Nama pelanggan wajib diisi.'};
   if(!phone)return {success:false,message:'Nomor HP wajib diisi.'};
   if(!packageId)return {success:false,message:'Paket WiFi wajib dipilih.'};
-  const sheet=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_PELANGGAN);
+  const sheet=getSpreadsheet_().getSheetByName(CONFIG.SHEET_PELANGGAN);
   if(!sheet)return {success:false,message:'Sheet Pelanggan tidak ditemukan.'};
   const existing=getSheetData(CONFIG.SHEET_PELANGGAN);
   if(existing.some(r=>String(r['Nomor HP']||r['No HP']||'').trim()===phone))return {success:false,message:'Nomor HP tersebut sudah terdaftar.'};
@@ -151,22 +165,7 @@ function addPelanggan(p){
   if(existing.some(r=>String(r['ID Pelanggan']||r['ID']||'').trim()===id))return {success:false,message:'ID Pelanggan sudah digunakan.'};
   const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getDisplayValues()[0];
   const row=Array(headers.length).fill('');
-  const values={
-    'ID Pelanggan':id,
-    'ID':id,
-    'Nama':name,
-    'Nomor HP':phone,
-    'No HP':phone,
-    'Alamat':address,
-    'Paket':packageId,
-    'ID Paket':packageId,
-    'Username MikroTik':mikrotik,
-    'Tipe':type,
-    'Tanggal Daftar':new Date(),
-    'Tanggal Jatuh Tempo':due,
-    'Jatuh Tempo':due,
-    'Status':status
-  };
+  const values={'ID Pelanggan':id,'ID':id,'Nama':name,'Nomor HP':phone,'No HP':phone,'Alamat':address,'Paket':packageId,'ID Paket':packageId,'Username MikroTik':mikrotik,'Tipe':type,'Tanggal Daftar':new Date(),'Tanggal Jatuh Tempo':due,'Jatuh Tempo':due,'Status':status};
   headers.forEach((h,i)=>{if(Object.prototype.hasOwnProperty.call(values,h))row[i]=values[h]});
   sheet.appendRow(row);
   return {success:true,message:'Pelanggan berhasil ditambahkan.',id:id};
@@ -175,58 +174,34 @@ function addPelanggan(p){
 function addPengguna(p){
   const auth=requireAdminToken(p.token);
   if(!auth.success)return auth;
-  const name=String(p.name||'').trim();
-  const username=String(p.username||'').trim();
-  const password=String(p.password||'');
-  const role=String(p.role||'operator').trim().toLowerCase()==='admin'?'admin':'operator';
-  const permissions=String(p.permissions||'dashboard,pelanggan,pembayaran,laporan').trim();
-  const status=String(p.status||'Aktif').trim()||'Aktif';
+  const name=String(p.name||'').trim(),username=String(p.username||'').trim(),password=String(p.password||''),role=String(p.role||'operator').trim().toLowerCase()==='admin'?'admin':'operator',permissions=String(p.permissions||'dashboard,pelanggan,pembayaran,laporan').trim(),status=String(p.status||'Aktif').trim()||'Aktif';
   if(!name)return {success:false,message:'Nama pengguna wajib diisi.'};
   if(!username)return {success:false,message:'Username wajib diisi.'};
   if(!/^[A-Za-z0-9._-]{3,40}$/.test(username))return {success:false,message:'Username hanya boleh berisi huruf, angka, titik, garis bawah, atau tanda hubung (3-40 karakter).'};
   if(password.length<6)return {success:false,message:'Password minimal 6 karakter.'};
-  const sheet=SpreadsheetApp.getActiveSpreadsheet().getSheetByName(CONFIG.SHEET_PENGGUNA);
+  const sheet=getSpreadsheet_().getSheetByName(CONFIG.SHEET_PENGGUNA);
   if(!sheet)return {success:false,message:'Sheet Pengguna tidak ditemukan.'};
   const existing=getSheetData(CONFIG.SHEET_PENGGUNA);
   if(existing.some(r=>String(r['Username']||'').trim().toLowerCase()===username.toLowerCase()))return {success:false,message:'Username tersebut sudah digunakan.'};
   const id=generateUserId(existing);
   const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getDisplayValues()[0];
   const row=Array(headers.length).fill('');
-  const values={
-    'ID User':id,
-    'Nama':name,
-    'Username':username,
-    'Password Hash':sha256(password),
-    'Role':role,
-    'Hak Akses':permissions,
-    'Status':status
-  };
+  const values={'ID User':id,'Nama':name,'Username':username,'Password Hash':sha256(password),'Role':role,'Hak Akses':permissions,'Status':status};
   headers.forEach((h,i)=>{if(Object.prototype.hasOwnProperty.call(values,h))row[i]=values[h]});
   sheet.appendRow(row);
   return {success:true,message:'User berhasil ditambahkan.',user:{id:id,name:name,username:username,role:role,status:status}};
 }
 
-function generateUserId(existing){
-  let max=0;
-  existing.forEach(r=>{const m=String(r['ID User']||'').match(/(\d+)$/);if(m)max=Math.max(max,Number(m[1])||0)});
-  return 'USR'+String(max+1).padStart(3,'0');
-}
-
-function generateCustomerId(existing){
-  let max=0;
-  existing.forEach(r=>{const m=String(r['ID Pelanggan']||r['ID']||'').match(/(\d+)$/);if(m)max=Math.max(max,Number(m[1])||0)});
-  return 'PLG'+String(max+1).padStart(3,'0');
-}
+function generateUserId(existing){let max=0;existing.forEach(r=>{const m=String(r['ID User']||'').match(/(\d+)$/);if(m)max=Math.max(max,Number(m[1])||0)});return 'USR'+String(max+1).padStart(3,'0')}
+function generateCustomerId(existing){let max=0;existing.forEach(r=>{const m=String(r['ID Pelanggan']||r['ID']||'').match(/(\d+)$/);if(m)max=Math.max(max,Number(m[1])||0)});return 'PLG'+String(max+1).padStart(3,'0')}
 
 function getSheetData(sheetName){
-  const ss=SpreadsheetApp.getActiveSpreadsheet();
-  const sheet=ss.getSheetByName(sheetName);
+  const sheet=getSpreadsheet_().getSheetByName(sheetName);
   if(!sheet)return [];
   const lastRow=sheet.getLastRow(),lastColumn=sheet.getLastColumn();
   if(lastRow<2||lastColumn<1)return [];
-  const values=sheet.getRange(1,1,lastRow,lastColumn).getDisplayValues();
-  const headers=values[0];
-  return values.slice(1).filter(row=>row.some(cell=>String(cell).trim()!=='' )).map(row=>{const obj={};headers.forEach((header,index)=>{if(String(header).trim())obj[header]=row[index]});return obj});
+  const values=sheet.getRange(1,1,lastRow,lastColumn).getDisplayValues(),headers=values[0];
+  return values.slice(1).filter(row=>row.some(cell=>String(cell).trim()!=='')).map(row=>{const obj={};headers.forEach((header,index)=>{if(String(header).trim())obj[header]=row[index]});return obj});
 }
 
 function response(data,prefix){
@@ -236,18 +211,40 @@ function response(data,prefix){
 }
 
 function setupWaliNet(){
-  const ss=SpreadsheetApp.getActiveSpreadsheet();
+  const ss=getSpreadsheet_();
   createSheetIfNotExists(ss,CONFIG.SHEET_PENGGUNA,['ID User','Nama','Username','Password Hash','Role','Hak Akses','Status']);
   createSheetIfNotExists(ss,CONFIG.SHEET_PELANGGAN,['ID Pelanggan','Nama','Nomor HP','Alamat','Paket','Username MikroTik','Tipe','Tanggal Daftar','Tanggal Jatuh Tempo','Status']);
   createSheetIfNotExists(ss,CONFIG.SHEET_PEMBAYARAN,['ID Pembayaran','ID Pelanggan','Nama','Tanggal','Nominal','Metode','Keterangan','Status']);
   createSheetIfNotExists(ss,CONFIG.SHEET_PAKET,['ID Paket','Nama Paket','Kecepatan','Harga','Durasi','Status']);
   createSheetIfNotExists(ss,CONFIG.SHEET_PENGATURAN,['Key','Value']);
   const users=getSheetData(CONFIG.SHEET_PENGGUNA);
-  const adminExists=users.some(row=>String(row['Username']||'').trim().toLowerCase()==='admin');
-  if(!adminExists)ss.getSheetByName(CONFIG.SHEET_PENGGUNA).appendRow(['USR001','Administrator','admin',sha256('admin123'),'admin','dashboard,pelanggan,pembayaran,paket,pengguna,pengaturan','Aktif']);
-  Logger.log('Setup WaliNet selesai. Username: admin / Password: admin123');
+  if(!users.some(row=>String(row['Username']||'').trim().toLowerCase()==='admin'))ss.getSheetByName(CONFIG.SHEET_PENGGUNA).appendRow(['USR001','Administrator','admin',sha256('admin123'),'admin','dashboard,pelanggan,pembayaran,paket,pengguna,pengaturan','Aktif']);
+  return {success:true,message:'WaliNet berhasil disiapkan.'};
 }
 
-function createSheetIfNotExists(ss,sheetName,headers){let sheet=ss.getSheetByName(sheetName);if(!sheet)sheet=ss.insertSheet(sheetName);if(sheet.getLastRow()===0)sheet.getRange(1,1,1,headers.length).setValues([headers])}
-function testStatus(){return {success:true,message:'WaliNet API aktif.',time:new Date().toISOString()}}
-function testLogin(){return loginUser('admin','admin123')}
+function createSheetIfNotExists(ss,name,headers){
+  let sheet=ss.getSheetByName(name);
+  if(!sheet)sheet=ss.insertSheet(name);
+  if(sheet.getLastRow()===0)sheet.appendRow(headers);
+  return sheet;
+}
+
+function setSpreadsheetId(id){
+  id=String(id||'').trim();
+  if(!id)throw new Error('ID Spreadsheet wajib diisi.');
+  SpreadsheetApp.openById(id);
+  PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID',id);
+  return {success:true,message:'SPREADSHEET_ID tersimpan.'};
+}
+
+function testLogin(){
+  const result=loginUser('admin','admin123');
+  Logger.log(JSON.stringify(result,null,2));
+  return result;
+}
+
+function testPaket(){
+  const result=getPaket();
+  Logger.log(JSON.stringify(result,null,2));
+  return result;
+}
