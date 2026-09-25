@@ -1,4 +1,4 @@
-const CACHE="walinet-pwa-v3";
+const CACHE="walinet-pwa-v4";
 const ASSETS=["./","./index.html","./styles.css","./app.js","./manifest.webmanifest","./icons/icon.svg"];
 
 self.addEventListener("install",event=>{
