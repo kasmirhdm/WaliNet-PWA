@@ -32,6 +32,10 @@ Deno.serve(async req=>{
       const buyerEmail=String(body.buyer_email||"").trim();
       const days=Math.max(0,Number(body.validity_days||0));
       if(!buyerName)return json({message:"Nama pembeli wajib diisi."},400);
+      const phoneDigits=buyerPhone.replace(/\D/g,"");
+      if(phoneDigits.length<10 || phoneDigits.length>15){
+        return json({message:"Nomor WhatsApp wajib diisi dan harus valid."},400);
+      }
 
       let code="",row=null;
       for(let i=0;i<5;i++){
