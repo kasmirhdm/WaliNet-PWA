@@ -43,15 +43,42 @@ $("logout").onclick=async()=>{await sb.auth.signOut();location.reload()};
 $("refresh").onclick=refresh;
 $("create").onclick=async()=>{
   setMsg("createMsg","");
+  const name=$("buyerName").value.trim();
+  const phone=$("buyerPhone").value.trim();
+  const email=$("buyerEmail").value.trim();
+
+  if(!name){
+    setMsg("createMsg","Nama pembeli wajib diisi.");
+    $("buyerName").focus();
+    return;
+  }
+
+  const digits=phone.replace(/\D/g,"");
+  if(digits.length < 10 || digits.length > 15){
+    setMsg("createMsg","Nomor WhatsApp tidak valid. Contoh: 0812-1234-5678.");
+    $("buyerPhone").focus();
+    return;
+  }
+
   const btn=$("create");btn.disabled=true;btn.textContent="MEMBUAT...";
   try{
-    const body=await callManage("create",{buyer_name:$("buyerName").value.trim(),buyer_phone:$("buyerPhone").value.trim(),buyer_email:$("buyerEmail").value.trim(),validity_days:Number($("validity").value)});
-    lastCode=body.license_code;lastPhone=$("buyerPhone").value.trim();
-    $("code").textContent=lastCode;$("created").classList.remove("hidden");
+    const body=await callManage("create",{
+      buyer_name:name,
+      buyer_phone:phone,
+      buyer_email:email,
+      validity_days:Number($("validity").value)
+    });
+    lastCode=body.license_code;
+    lastPhone=phone;
+    $("code").textContent=lastCode;
+    $("created").classList.remove("hidden");
     refresh();
   }catch(e){setMsg("createMsg",e.message)}
   btn.disabled=false;btn.textContent="BUAT LISENSI";
 };
 $("copy").onclick=async()=>{await navigator.clipboard.writeText(lastCode);$("copy").textContent="Tersalin ✓";setTimeout(()=>$("copy").textContent="Salin Kode",1500)};
-$("wa").onclick=()=>{if(lastPhone)location.href=waUrl(lastPhone,lastCode);else alert("Nomor WhatsApp pembeli belum diisi.")};
+$("wa").onclick=()=>{
+  if(lastPhone) location.href=waUrl(lastPhone,lastCode);
+  else setMsg("createMsg","Nomor WhatsApp pembeli belum diisi.");
+};
 init();
